@@ -18,10 +18,11 @@ jobs:
             target: linux-amd64
             artifact_name: tshark_main
             asset_name: easytshark-linux-amd64
-          - os: windows-2022
-            target: windows-amd64
-            artifact_name: tshark_main.exe
-            asset_name: easytshark-windows-amd64.exe
+          # Windows构建暂时禁用，因为代码使用了Linux特有的头文件
+          # - os: windows-2022
+          #   target: windows-amd64
+          #   artifact_name: tshark_main.exe
+          #   asset_name: easytshark-windows-amd64.exe
 
     steps:
     - name: Checkout code
@@ -33,16 +34,17 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y build-essential cmake libsqlite3-dev
 
-    - name: Setup vcpkg (Windows)
-      if: matrix.os == 'windows-2022'
-      uses: lukka/run-vcpkg@v11
-      with:
-        vcpkgGitCommitId: '7516a02de04e8f8ff4e4beb8f5bac0565f9bf9da'
-        
-    - name: Install dependencies (Windows)
-      if: matrix.os == 'windows-2022'
-      run: |
-        vcpkg install sqlite3:x64-windows
+    # Windows构建暂时禁用
+    # - name: Setup vcpkg (Windows)
+    #   if: matrix.os == 'windows-2022'
+    #   uses: lukka/run-vcpkg@v11
+    #   with:
+    #     vcpkgGitCommitId: '7516a02de04e8f8ff4e4beb8f5bac0565f9bf9da'
+    #     
+    # - name: Install dependencies (Windows)
+    #   if: matrix.os == 'windows-2022'
+    #   run: |
+    #     vcpkg install sqlite3:x64-windows
 
     - name: Create build directory
       run: mkdir -p build
@@ -53,11 +55,12 @@ jobs:
         cd build
         cmake .. -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }}
 
-    - name: Configure CMake (Windows)
-      if: matrix.os == 'windows-2022'
-      run: |
-        cd build
-        cmake .. -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -A x64
+    # Windows构建暂时禁用
+    # - name: Configure CMake (Windows)
+    #   if: matrix.os == 'windows-2022'
+    #   run: |
+    #     cd build
+    #     cmake .. -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -A x64
 
     - name: Build
       run: |
@@ -67,7 +70,7 @@ jobs:
     - name: List output directory (Debug)
       run: |
         echo "Contents of output directory:"
-        ls -la output/ || dir output\
+        ls -la output/
 
     - name: Create output directory and copy artifacts (Linux)
       if: matrix.os == 'ubuntu-22.04'
@@ -76,19 +79,20 @@ jobs:
         cp output/${{ matrix.artifact_name }} artifacts/${{ matrix.asset_name }}
         chmod +x artifacts/${{ matrix.asset_name }}
         
-    - name: Create output directory and copy artifacts (Windows)
-      if: matrix.os == 'windows-2022'
-      shell: cmd
-      run: |
-        mkdir artifacts
-        if exist "output\${{ matrix.artifact_name }}" (
-          copy "output\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
-        ) else if exist "output\Release\${{ matrix.artifact_name }}" (
-          copy "output\Release\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
-        ) else (
-          echo "Executable not found"
-          exit /b 1
-        )
+    # Windows构建暂时禁用
+    # - name: Create output directory and copy artifacts (Windows)
+    #   if: matrix.os == 'windows-2022'
+    #   shell: cmd
+    #   run: |
+    #     mkdir artifacts
+    #     if exist "output\${{ matrix.artifact_name }}" (
+    #       copy "output\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
+    #     ) else if exist "output\Release\${{ matrix.artifact_name }}" (
+    #       copy "output\Release\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
+    #     ) else (
+    #       echo "Executable not found"
+    #       exit /b 1
+    #     )
 
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
@@ -128,19 +132,41 @@ jobs:
           - 格式转换：PCAP → XML → JSON
           - IP地理位置解析
           
+          ## 平台支持
+          
+          **⚠️ 重要说明：** 本项目当前仅支持Linux平台。
+          
+          代码中使用了Linux特有的系统调用和头文件：
+          - `sys/epoll.h` - Linux的epoll事件通知机制
+          - `arpa/inet.h` - POSIX网络API
+          - `iconv.h` - 字符编码转换库
+          
+          这些在Windows上不可用，因此暂时无法提供Windows版本。
+          
           ## 下载说明
-          - `easytshark-linux-amd64`: Linux x64版本
-          - `easytshark-windows-amd64.exe`: Windows x64版本
+          - `easytshark-linux-amd64`: Linux x64版本（推荐在Ubuntu 22.04+上使用）
           
           ## 使用方法
-          1. 下载对应平台的可执行文件
-          2. Linux下需要安装tshark: `sudo apt-get install tshark`
-          3. Windows下需要安装Wireshark（包含tshark）
-          4. 运行程序并按提示操作
+          
+          ### Linux用户
+          1. 下载`easytshark-linux-amd64`
+          2. 添加执行权限：`chmod +x easytshark-linux-amd64`
+          3. 安装tshark：`sudo apt-get install tshark`
+          4. 运行：`./easytshark-linux-amd64`
+          
+          ### Windows用户
+          如果您需要在Windows上使用，建议：
+          1. 使用WSL2 (Windows Subsystem for Linux)
+          2. 在WSL2中安装Ubuntu并运行Linux版本
+          3. 或者使用Docker容器运行
+          
+          ## 系统要求
+          - Linux操作系统（Ubuntu 22.04+推荐）
+          - tshark (Wireshark命令行工具)
+          - SQLite3库支持
           
           更多详细信息请参考项目README文件。
         files: |
           artifacts/linux-amd64/easytshark-linux-amd64
-          artifacts/windows-amd64/easytshark-windows-amd64.exe
         draft: false
         prerelease: false 
