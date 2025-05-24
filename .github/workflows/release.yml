@@ -1,0 +1,146 @@
+name: Release Build
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'  # 匹配版本标签，如 v1.0.0
+
+env:
+  CMAKE_BUILD_TYPE: Release
+
+jobs:
+  build:
+    runs-on: ${{ matrix.os }}
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-22.04
+            target: linux-amd64
+            artifact_name: tshark_main
+            asset_name: easytshark-linux-amd64
+          - os: windows-2022
+            target: windows-amd64
+            artifact_name: tshark_main.exe
+            asset_name: easytshark-windows-amd64.exe
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies (Linux)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y build-essential cmake libsqlite3-dev
+
+    - name: Setup vcpkg (Windows)
+      if: matrix.os == 'windows-2022'
+      uses: lukka/run-vcpkg@v11
+      with:
+        vcpkgGitCommitId: '7516a02de04e8f8ff4e4beb8f5bac0565f9bf9da'
+        
+    - name: Install dependencies (Windows)
+      if: matrix.os == 'windows-2022'
+      run: |
+        vcpkg install sqlite3:x64-windows
+
+    - name: Create build directory
+      run: mkdir -p build
+
+    - name: Configure CMake (Linux)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }}
+
+    - name: Configure CMake (Windows)
+      if: matrix.os == 'windows-2022'
+      run: |
+        cd build
+        cmake .. -DCMAKE_BUILD_TYPE=${{ env.CMAKE_BUILD_TYPE }} -DCMAKE_TOOLCHAIN_FILE=${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -A x64
+
+    - name: Build
+      run: |
+        cd build
+        cmake --build . --config ${{ env.CMAKE_BUILD_TYPE }} --parallel
+
+    - name: List output directory (Debug)
+      run: |
+        echo "Contents of output directory:"
+        ls -la output/ || dir output\
+
+    - name: Create output directory and copy artifacts (Linux)
+      if: matrix.os == 'ubuntu-22.04'
+      run: |
+        mkdir -p artifacts
+        cp output/${{ matrix.artifact_name }} artifacts/${{ matrix.asset_name }}
+        chmod +x artifacts/${{ matrix.asset_name }}
+        
+    - name: Create output directory and copy artifacts (Windows)
+      if: matrix.os == 'windows-2022'
+      shell: cmd
+      run: |
+        mkdir artifacts
+        if exist "output\${{ matrix.artifact_name }}" (
+          copy "output\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
+        ) else if exist "output\Release\${{ matrix.artifact_name }}" (
+          copy "output\Release\${{ matrix.artifact_name }}" "artifacts\${{ matrix.asset_name }}"
+        ) else (
+          echo "Executable not found"
+          exit /b 1
+        )
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.target }}
+        path: artifacts/${{ matrix.asset_name }}
+
+  release:
+    needs: build
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v4
+      with:
+        path: artifacts
+
+    - name: List artifacts (Debug)
+      run: |
+        echo "Downloaded artifacts:"
+        find artifacts -type f -ls
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        name: EasyTshark Release ${{ github.ref_name }}
+        body: |
+          # EasyTshark Release ${{ github.ref_name }}
+          
+          ## 功能特点
+          - 双模式操作：实时抓包和离线分析
+          - 数据存储：SQLite数据库存储
+          - 格式转换：PCAP → XML → JSON
+          - IP地理位置解析
+          
+          ## 下载说明
+          - `easytshark-linux-amd64`: Linux x64版本
+          - `easytshark-windows-amd64.exe`: Windows x64版本
+          
+          ## 使用方法
+          1. 下载对应平台的可执行文件
+          2. Linux下需要安装tshark: `sudo apt-get install tshark`
+          3. Windows下需要安装Wireshark（包含tshark）
+          4. 运行程序并按提示操作
+          
+          更多详细信息请参考项目README文件。
+        files: |
+          artifacts/linux-amd64/easytshark-linux-amd64
+          artifacts/windows-amd64/easytshark-windows-amd64.exe
+        draft: false
+        prerelease: false 
